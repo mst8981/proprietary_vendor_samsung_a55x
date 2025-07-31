@@ -14,56 +14,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # A54X_CHN_OPEN
-          - model: "SM-A5460"
-            csc: "CHC"
-            omc: "CHC"
-          # A54X_CHN_HK
-          - model: "SM-A5460"
-            csc: "BRI"
-            omc: "OZS"
-          # A54X_EUR_OPEN
-          - model: "SM-A546B"
-            csc: "EUX"
-            omc: "OXM"
-          # A54X_SEA_OPEN
-          - model: "SM-A546E"
-            csc: "INS"
-            omc: "ODM"
-          - model: "SM-A546E"
-            csc: "EGY"
-            omc: "OJM"
-          - model: "SM-A546E"
-            csc: "XID"
-            omc: "OLE"
-          - model: "SM-A546E"
-            csc: "XSA"
-            omc: "OLM"
-          - model: "SM-A546E"
-            csc: "PEO"
-            omc: "OWB"
-          - model: "SM-A546E"
-            csc: "ZTO"
-            omc: "OWO"
-          - model: "SM-A546E"
-            csc: "SEK"
-            omc: "OXE"
-          # A54X_USA_SINGLEX
-          - model: "SM-A546U"
-            csc: "CCT"
-            omc: "OYN"
-          # A54X_USA_OPEN
-          - model: "SM-A546U1"
-            csc: "XAA"
-            omc: "OYM"
-          # A54X_CAN_SINGLE
-          - model: "SM-A546W"
-            csc: "XAC"
-            omc: "OYV"
-          # A54X_KOR_SKT
-          - model: "SM-A546S"
+          - model: "SM-A556S"
             csc: "SKC"
             omc: "SKC"
+          - model: "SM-A556E"
+            csc: "XME"
+            omc: "XME"
+          - model: "SM-A5560"
+            csc: "BRI"
+            omc: "BRI"
 
     steps:
       - name: Checkout repo
@@ -102,26 +61,18 @@ jobs:
         if: env.need_update == 1
         run: |
           sudo apt-get update
-          sudo apt-get install -y liblz4-tool zip simg2img f2fs-tools
+          sudo apt-get install -y liblz4-tool zip f2fs-tools
           sudo wget -O /usr/bin/samfirm https://github.com/DavidArsene/samfirm.js/releases/download/v0.3.0/samfirm.js && sudo chmod +x /usr/bin/samfirm
 
       - name: Fetch firmware
         if: env.need_update == 1
         run: |
-          if [[ "${{ matrix.model }}" == "SM-A5460" ]]; then
-              imei="R5CW71BXYRV"
-          elif [[ "${{ matrix.model }}" == "SM-A546B" ]]; then
-              imei="350756481234568"
-          elif [[ "${{ matrix.model }}" == "SM-A546U" ]]; then
-              imei="356044291234563"
-          elif [[ "${{ matrix.model }}" == "SM-A546U1" ]]; then
-              imei="356642731234562"
-          elif [[ "${{ matrix.model }}" == "SM-A546W" ]]; then
-              imei="351617731234569"
-          elif [[ "${{ matrix.model }}" == "SM-A546S" ]]; then
-              imei="351992291234568"
-          else
-              imei="350090711234564"
+          if [[ "${{ matrix.model }}" == "SM-A556S" ]]; then
+              imei="351229821234564"
+          elif [[ "${{ matrix.model }}" == "SM-A556E" ]]; then
+              imei="355326621234566"
+          elif [[ "${{ matrix.model }}" == "SM-A5560" ]]; then
+              imei="356394411234567"
           fi
           samfirm -m ${{ matrix.model }} -r ${{ matrix.csc }} -i $imei
 
@@ -180,21 +131,29 @@ jobs:
           tar cvf ${{ env.latest_shortversion }}_patched_vbmeta.tar vbmeta.img
           rm vbmeta.img
 
-      - name: Extract vendor and vendor_dlkm partition
+      - name: Extract vendor and *_dlkm partition
         if: env.need_update == 1
         run: |
+          wget -O simg2img https://raw.githubusercontent.com/DumprX/DumprX/main/utils/bin/simg2img
+          wget -O lpunpack https://raw.githubusercontent.com/DumprX/DumprX/main/utils/lpunpack
+          chmod +x simg2img lpunpack
+
+          # Extract and convert super.img
           tar xvf ${{ env.ap_tar }} super.img.lz4
           lz4 -d super.img.lz4 super.img
           rm super.img.lz4
-          simg2img super.img super_raw.img
+          ./simg2img super.img super_raw.img
           rm super.img
           mv super_raw.img super.img
-          python3 tools/bin/lpunpack.py -p vendor,vendor_dlkm super.img .
+
+          ./lpunpack --partition=vendor_a super.img || true
+          ./lpunpack --partition=vendor_dlkm_a super.img || true
+          ./lpunpack --partition=system_dlkm_a super.img || true
+
           rm super.img
-          [[ -e vendor.img ]] && zip ${{ env.latest_shortversion }}_vendor.zip vendor.img
-          [[ -e vendor_dlkm.img ]] && zip ${{ env.latest_shortversion }}_vendor_dlkm.zip vendor_dlkm.img
-          [[ -e vendor.img ]] && rm vendor.img
-          [[ -e vendor_dlkm.img ]] && rm vendor_dlkm.img
+          [[ -f vendor_a.img ]] && mv vendor_a.img vendor.img && zip ${{ env.latest_shortversion }}_vendor.zip vendor.img && rm vendor.img
+          [[ -f vendor_dlkm_a.img ]] && mv vendor_dlkm_a.img vendor_dlkm.img && zip ${{ env.latest_shortversion }}_vendor_dlkm.zip vendor_dlkm.img && rm vendor_dlkm.img
+          [[ -f system_dlkm_a.img ]] && mv system_dlkm_a.img system_dlkm.img && zip ${{ env.latest_shortversion }}_system_dlkm.zip system_dlkm.img && rm system_dlkm.img
 
       - name: Update current version
         if: env.need_update == 1
@@ -212,13 +171,13 @@ jobs:
         uses: ad-m/github-push-action@master
         with:
           tags: true
-          github_token: ${{ secrets.TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload release assets
         if: env.need_update == 1
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           body_path: versions.txt
           tag_name: "${{ env.latest_shortversion }}_${{ matrix.omc }}"
@@ -231,4 +190,5 @@ jobs:
             ${{ env.pit_file }}
             ${{ env.latest_shortversion }}_patched_vbmeta.tar
             ${{ env.latest_shortversion }}_vendor.zip
+            ${{ env.latest_shortversion }}_system_dlkm.zip
             ${{ env.latest_shortversion }}_vendor_dlkm.zip
